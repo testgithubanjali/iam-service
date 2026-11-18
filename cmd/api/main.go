@@ -40,6 +40,7 @@ func main() {
 	auth := api.Group("/auth")
 
 	auth.POST("/register", authHandler.Register)
+	auth.POST("/login", authHandler.Login)
 
 	// Start server
 	log.Println("IAM Server running on port 8080")

@@ -52,3 +52,32 @@ func (r *UserRepository) Create(
 
 	return user, nil
 }
+
+func (r *UserRepository) FindByEmail(
+	ctx context.Context,
+	email string,
+) (*models.User, string, error) {
+
+	query := `
+        SELECT id, name, email, password_hash, created_at
+        FROM users
+        WHERE email = $1
+    `
+
+	user := &models.User{}
+	var passwordHash string
+
+	err := r.DB.QueryRowContext(ctx, query, email).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&passwordHash,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, "", err
+	}
+
+	return user, passwordHash, nil
+}

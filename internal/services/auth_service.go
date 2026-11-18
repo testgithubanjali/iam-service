@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
+	"iam-service/internal/utils"
 
 	"iam-service/internal/models"
 	"iam-service/internal/repositories"
@@ -64,4 +65,33 @@ func (s *AuthService) Register(
 	}
 
 	return user, nil
+}
+
+func (s *AuthService) Login(
+	ctx context.Context,
+	email string,
+	password string,
+) (*models.User, *utils.TokenPair, error) {
+
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	user, passwordHash, err := s.UserRepo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, nil, errors.New("invalid email or password")
+	}
+
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(passwordHash),
+		[]byte(password),
+	)
+	if err != nil {
+		return nil, nil, errors.New("invalid email or password")
+	}
+
+	tokens, err := utils.GenerateTokenPair(user.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return user, tokens, nil
 }

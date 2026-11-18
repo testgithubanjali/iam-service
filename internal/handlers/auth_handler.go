@@ -70,3 +70,45 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		"user":    user,
 	})
 }
+
+type LoginRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
+}
+
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req LoginRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid login details",
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(
+		c.Request.Context(),
+		5*time.Second,
+	)
+	defer cancel()
+
+	user, tokens, err := h.AuthService.Login(
+		ctx,
+		req.Email,
+		req.Password,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Invalid email or password",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Login successful",
+		"user":          user,
+		"access_token":  tokens.AccessToken,
+		"refresh_token": tokens.RefreshToken,
+	})
+}
