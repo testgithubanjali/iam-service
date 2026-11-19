@@ -21,9 +21,17 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize application layers
+	// Initialize repositories
 	userRepo := repositories.NewUserRepository(db)
-	authService := services.NewAuthService(userRepo)
+	refreshTokenRepo := repositories.NewRefreshTokenRepository(db)
+
+	// Initialize service
+	authService := services.NewAuthService(
+		userRepo,
+		refreshTokenRepo,
+	)
+
+	// Initialize handler
 	authHandler := handlers.NewAuthHandler(authService)
 
 	// Create Gin router
@@ -65,6 +73,8 @@ func main() {
 	protected.GET("/users/me", authHandler.GetMe)
 	protected.PUT("/users/me", authHandler.UpdateProfile)
 	protected.PUT("/users/change-password", authHandler.ChangePassword)
+
+	// Print registered routes
 	for _, route := range router.Routes() {
 		log.Printf("REGISTERED ROUTE: %s %s", route.Method, route.Path)
 	}

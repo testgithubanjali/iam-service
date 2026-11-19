@@ -3,25 +3,30 @@ package services
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
-	"iam-service/internal/utils"
 
 	"iam-service/internal/models"
 	"iam-service/internal/repositories"
+	"iam-service/internal/utils"
 )
 
 var ErrEmailAlreadyExists = errors.New("email already registered")
 
 type AuthService struct {
-	UserRepo *repositories.UserRepository
+	UserRepo         *repositories.UserRepository
+	RefreshTokenRepo *repositories.RefreshTokenRepository
 }
 
-func NewAuthService(repo *repositories.UserRepository) *AuthService {
+func NewAuthService(
+	userRepo *repositories.UserRepository,
+	refreshTokenRepo *repositories.RefreshTokenRepository,
+) *AuthService {
 	return &AuthService{
-		UserRepo: repo,
+		UserRepo:         userRepo,
+		RefreshTokenRepo: refreshTokenRepo,
 	}
 }
 
@@ -67,7 +72,6 @@ func (s *AuthService) Register(
 
 	return user, nil
 }
-
 func (s *AuthService) Login(
 	ctx context.Context,
 	email string,
@@ -77,50 +81,95 @@ func (s *AuthService) Login(
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	user, passwordHash, err := s.UserRepo.FindByEmail(ctx, email)
-
 	if err != nil {
-		fmt.Println("DEBUG: FindByEmail failed:", err)
 		return nil, nil, errors.New("invalid email or password")
 	}
-
-	fmt.Println("DEBUG: User found:", user.Email)
-	fmt.Println("DEBUG: Password hash retrieved:", passwordHash != "")
 
 	err = bcrypt.CompareHashAndPassword(
 		[]byte(passwordHash),
 		[]byte(password),
 	)
-
 	if err != nil {
-		fmt.Println("DEBUG: Bcrypt comparison failed:", err)
 		return nil, nil, errors.New("invalid email or password")
 	}
 
-	fmt.Println("DEBUG: Password comparison successful")
-
+	// Generate access and refresh tokens
 	tokens, err := utils.GenerateTokenPair(user.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Save refresh-token hash in PostgreSQL
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+
+	err = s.RefreshTokenRepo.SaveRefreshToken(
+		ctx,
+		user.ID,
+		tokens.RefreshToken,
+		expiresAt,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return user, tokens, nil
 }
+
 func (s *AuthService) Refresh(
 	ctx context.Context,
 	refreshToken string,
 ) (*models.User, *utils.TokenPair, error) {
 
+	// 1. Validate JWT signature, expiry and token type
 	userID, err := utils.ValidateRefreshToken(refreshToken)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// 2. Check whether the refresh token exists in PostgreSQL
+	storedUserID, err := s.RefreshTokenRepo.ValidateRefreshToken(
+		ctx,
+		refreshToken,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 3. Ensure the database user ID matches the JWT user ID
+	if storedUserID != userID {
+		return nil, nil, errors.New("invalid refresh token")
+	}
+
+	// 4. Get user details
 	user, err := s.UserRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, nil, errors.New("user not found")
 	}
 
+	// 5. Generate a new token pair
 	tokens, err := utils.GenerateTokenPair(user.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 6. Save the new refresh token in PostgreSQL
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+
+	err = s.RefreshTokenRepo.SaveRefreshToken(
+		ctx,
+		user.ID,
+		tokens.RefreshToken,
+		expiresAt,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 7. Revoke the old refresh token
+	err = s.RefreshTokenRepo.RevokeRefreshToken(
+		ctx,
+		refreshToken,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
