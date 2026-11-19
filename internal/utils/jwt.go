@@ -67,3 +67,41 @@ func generateToken(
 
 	return token.SignedString([]byte(secret))
 }
+
+func ValidateRefreshToken(refreshToken string) (int64, error) {
+	secret := os.Getenv("JWT_SECRET")
+
+	if len(secret) < 32 {
+		return 0, errors.New("JWT_SECRET must contain at least 32 characters")
+	}
+
+	claims := &TokenClaims{}
+
+	token, err := jwt.ParseWithClaims(
+		refreshToken,
+		claims,
+		func(token *jwt.Token) (interface{}, error) {
+			if token.Method != jwt.SigningMethodHS256 {
+				return nil, jwt.ErrSignatureInvalid
+			}
+
+			return []byte(secret), nil
+		},
+		jwt.WithIssuer("iam-service"),
+		jwt.WithExpirationRequired(),
+	)
+
+	if err != nil || token == nil || !token.Valid {
+		return 0, errors.New("invalid or expired refresh token")
+	}
+
+	if claims.TokenType != "refresh" {
+		return 0, errors.New("refresh token required")
+	}
+
+	if claims.UserID <= 0 {
+		return 0, errors.New("invalid user ID")
+	}
+
+	return claims.UserID, nil
+}

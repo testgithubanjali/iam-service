@@ -3,8 +3,8 @@ package services
 import (
 	"context"
 	"errors"
-	"strings"
 	"fmt"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	"iam-service/internal/utils"
@@ -69,39 +69,61 @@ func (s *AuthService) Register(
 }
 
 func (s *AuthService) Login(
-    ctx context.Context,
-    email string,
-    password string,
+	ctx context.Context,
+	email string,
+	password string,
 ) (*models.User, *utils.TokenPair, error) {
 
-    email = strings.ToLower(strings.TrimSpace(email))
+	email = strings.ToLower(strings.TrimSpace(email))
 
-    user, passwordHash, err := s.UserRepo.FindByEmail(ctx, email)
+	user, passwordHash, err := s.UserRepo.FindByEmail(ctx, email)
 
-    if err != nil {
-        fmt.Println("DEBUG: FindByEmail failed:", err)
-        return nil, nil, errors.New("invalid email or password")
-    }
+	if err != nil {
+		fmt.Println("DEBUG: FindByEmail failed:", err)
+		return nil, nil, errors.New("invalid email or password")
+	}
 
-    fmt.Println("DEBUG: User found:", user.Email)
-    fmt.Println("DEBUG: Password hash retrieved:", passwordHash != "")
+	fmt.Println("DEBUG: User found:", user.Email)
+	fmt.Println("DEBUG: Password hash retrieved:", passwordHash != "")
 
-    err = bcrypt.CompareHashAndPassword(
-        []byte(passwordHash),
-        []byte(password),
-    )
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(passwordHash),
+		[]byte(password),
+	)
 
-    if err != nil {
-        fmt.Println("DEBUG: Bcrypt comparison failed:", err)
-        return nil, nil, errors.New("invalid email or password")
-    }
+	if err != nil {
+		fmt.Println("DEBUG: Bcrypt comparison failed:", err)
+		return nil, nil, errors.New("invalid email or password")
+	}
 
-    fmt.Println("DEBUG: Password comparison successful")
+	fmt.Println("DEBUG: Password comparison successful")
 
-    tokens, err := utils.GenerateTokenPair(user.ID)
-    if err != nil {
-        return nil, nil, err
-    }
+	tokens, err := utils.GenerateTokenPair(user.ID)
+	if err != nil {
+		return nil, nil, err
+	}
 
-    return user, tokens, nil
+	return user, tokens, nil
+}
+func (s *AuthService) Refresh(
+	ctx context.Context,
+	refreshToken string,
+) (*models.User, *utils.TokenPair, error) {
+
+	userID, err := utils.ValidateRefreshToken(refreshToken)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	user, err := s.UserRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, nil, errors.New("user not found")
+	}
+
+	tokens, err := utils.GenerateTokenPair(user.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return user, tokens, nil
 }

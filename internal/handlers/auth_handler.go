@@ -157,3 +157,36 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 		"user":    user,
 	})
 }
+
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req RefreshRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Refresh token is required",
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	user, tokens, err := h.AuthService.Refresh(ctx, req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Invalid or expired refresh token",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Token refreshed successfully",
+		"user":          user,
+		"access_token":  tokens.AccessToken,
+		"refresh_token": tokens.RefreshToken,
+	})
+}

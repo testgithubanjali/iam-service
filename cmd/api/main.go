@@ -29,6 +29,11 @@ func main() {
 	// Create Gin router
 	router := gin.Default()
 
+	// Disable trusted proxies for local development
+	if err := router.SetTrustedProxies(nil); err != nil {
+		log.Fatal(err)
+	}
+
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -42,6 +47,7 @@ func main() {
 
 	auth.POST("/register", authHandler.Register)
 	auth.POST("/login", authHandler.Login)
+	auth.POST("/refresh", authHandler.Refresh)
 
 	// Protected routes
 	protected := api.Group("/")
@@ -55,7 +61,13 @@ func main() {
 			"user_id": userID,
 		})
 	})
+
 	protected.GET("/users/me", authHandler.GetMe)
+
+	// Print registered routes
+	for _, route := range router.Routes() {
+		log.Printf("REGISTERED ROUTE: %s %s", route.Method, route.Path)
+	}
 
 	// Start server
 	log.Println("IAM Server running on port 8080")
