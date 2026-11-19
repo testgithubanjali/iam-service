@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"iam-service/internal/models"
-	    "iam-service/internal/utils"
+	
 )
 
 type UserRepository struct {

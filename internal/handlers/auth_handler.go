@@ -112,3 +112,48 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"refresh_token": tokens.RefreshToken,
 	})
 }
+
+func (h *AuthHandler) GetMe(c *gin.Context) {
+
+	// Get user ID from JWT middleware
+	userIDValue, exists := c.Get("userID")
+
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User authentication required",
+		})
+		return
+	}
+
+	userID, ok := userIDValue.(int64)
+
+	if !ok || userID <= 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Invalid user ID",
+		})
+		return
+	}
+
+	// Create request timeout
+	ctx, cancel := context.WithTimeout(
+		c.Request.Context(),
+		5*time.Second,
+	)
+	defer cancel()
+
+	// Fetch user from database
+	user, err := h.AuthService.UserRepo.GetByID(ctx, userID)
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "User not found",
+		})
+		return
+	}
+
+	// Return user profile
+	c.JSON(http.StatusOK, gin.H{
+		"message": "User profile fetched successfully",
+		"user":    user,
+	})
+}

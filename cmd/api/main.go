@@ -55,6 +55,7 @@ func main() {
 			"user_id": userID,
 		})
 	})
+	protected.GET("/users/me", authHandler.GetMe)
 
 	// Start server
 	log.Println("IAM Server running on port 8080")
