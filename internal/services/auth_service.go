@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
 	"iam-service/internal/utils"
@@ -68,30 +69,39 @@ func (s *AuthService) Register(
 }
 
 func (s *AuthService) Login(
-	ctx context.Context,
-	email string,
-	password string,
+    ctx context.Context,
+    email string,
+    password string,
 ) (*models.User, *utils.TokenPair, error) {
 
-	email = strings.ToLower(strings.TrimSpace(email))
+    email = strings.ToLower(strings.TrimSpace(email))
 
-	user, passwordHash, err := s.UserRepo.FindByEmail(ctx, email)
-	if err != nil {
-		return nil, nil, errors.New("invalid email or password")
-	}
+    user, passwordHash, err := s.UserRepo.FindByEmail(ctx, email)
 
-	err = bcrypt.CompareHashAndPassword(
-		[]byte(passwordHash),
-		[]byte(password),
-	)
-	if err != nil {
-		return nil, nil, errors.New("invalid email or password")
-	}
+    if err != nil {
+        fmt.Println("DEBUG: FindByEmail failed:", err)
+        return nil, nil, errors.New("invalid email or password")
+    }
 
-	tokens, err := utils.GenerateTokenPair(user.ID)
-	if err != nil {
-		return nil, nil, err
-	}
+    fmt.Println("DEBUG: User found:", user.Email)
+    fmt.Println("DEBUG: Password hash retrieved:", passwordHash != "")
 
-	return user, tokens, nil
+    err = bcrypt.CompareHashAndPassword(
+        []byte(passwordHash),
+        []byte(password),
+    )
+
+    if err != nil {
+        fmt.Println("DEBUG: Bcrypt comparison failed:", err)
+        return nil, nil, errors.New("invalid email or password")
+    }
+
+    fmt.Println("DEBUG: Password comparison successful")
+
+    tokens, err := utils.GenerateTokenPair(user.ID)
+    if err != nil {
+        return nil, nil, err
+    }
+
+    return user, tokens, nil
 }

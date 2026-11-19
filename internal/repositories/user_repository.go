@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"iam-service/internal/models"
+	    "iam-service/internal/utils"
 )
 
 type UserRepository struct {
@@ -80,4 +81,31 @@ func (r *UserRepository) FindByEmail(
 	}
 
 	return user, passwordHash, nil
+}
+
+func (r *UserRepository) GetByID(
+	ctx context.Context,
+	id int64,
+) (*models.User, error) {
+
+	query := `
+		SELECT id, name, email, created_at
+		FROM users
+		WHERE id = $1
+	`
+
+	user := &models.User{}
+
+	err := r.DB.QueryRowContext(ctx, query, id).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	return user, nil
 }

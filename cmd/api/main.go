@@ -8,6 +8,7 @@ import (
 
 	"iam-service/internal/database"
 	"iam-service/internal/handlers"
+	"iam-service/internal/middleware"
 	"iam-service/internal/repositories"
 	"iam-service/internal/services"
 )
@@ -28,19 +29,32 @@ func main() {
 	// Create Gin router
 	router := gin.Default()
 
-	// Health check endpoint
+	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "IAM Service is running",
 		})
 	})
 
-	// Authentication routes
+	// Public authentication routes
 	api := router.Group("/api/v1")
 	auth := api.Group("/auth")
 
 	auth.POST("/register", authHandler.Register)
 	auth.POST("/login", authHandler.Login)
+
+	// Protected routes
+	protected := api.Group("/")
+	protected.Use(middleware.AuthMiddleware())
+
+	protected.GET("/protected", func(c *gin.Context) {
+		userID, _ := c.Get("userID")
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "You accessed a protected route!",
+			"user_id": userID,
+		})
+	})
 
 	// Start server
 	log.Println("IAM Server running on port 8080")
