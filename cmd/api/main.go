@@ -63,8 +63,8 @@ func main() {
 	})
 
 	protected.GET("/users/me", authHandler.GetMe)
-
-	// Print registered routes
+	protected.PUT("/users/me", authHandler.UpdateProfile)
+	protected.PUT("/users/change-password", authHandler.ChangePassword)
 	for _, route := range router.Routes() {
 		log.Printf("REGISTERED ROUTE: %s %s", route.Method, route.Path)
 	}

@@ -3,10 +3,10 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"iam-service/internal/models"
-	
 )
 
 type UserRepository struct {
@@ -108,4 +108,107 @@ func (r *UserRepository) GetByID(
 	}
 
 	return user, nil
+}
+func (r *UserRepository) UpdateProfile(
+	ctx context.Context,
+	userID int64,
+	name string,
+	email string,
+) (*models.User, error) {
+
+	query := `
+        UPDATE users
+        SET name = $1,
+            email = $2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+        RETURNING id, name, email, created_at
+    `
+
+	var user models.User
+
+	err := r.DB.QueryRowContext(
+		ctx,
+		query,
+		name,
+		email,
+		userID,
+	).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user profile: %w", err)
+	}
+
+	return &user, nil
+}
+func (r *UserRepository) UpdatePassword(
+	ctx context.Context,
+	userID int64,
+	passwordHash string,
+) error {
+
+	query := `
+        UPDATE users
+        SET password_hash = $1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+    `
+
+	result, err := r.DB.ExecContext(
+		ctx,
+		query,
+		passwordHash,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("user not found")
+	}
+
+	return nil
+}
+func (r *UserRepository) FindByUserID(
+	ctx context.Context,
+	userID int64,
+) (*models.User, string, error) {
+
+	query := `
+        SELECT id, name, email, password_hash, created_at
+        FROM users
+        WHERE id = $1
+    `
+
+	var user models.User
+	var passwordHash string
+
+	err := r.DB.QueryRowContext(
+		ctx,
+		query,
+		userID,
+	).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&passwordHash,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, "", err
+	}
+
+	return &user, passwordHash, nil
 }

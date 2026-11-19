@@ -127,3 +127,72 @@ func (s *AuthService) Refresh(
 
 	return user, tokens, nil
 }
+func (s *AuthService) UpdateProfile(
+	ctx context.Context,
+	userID int64,
+	name string,
+	email string,
+) (*models.User, error) {
+
+	name = strings.TrimSpace(name)
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	if name == "" || email == "" {
+		return nil, errors.New("name and email are required")
+	}
+
+	user, err := s.UserRepo.UpdateProfile(
+		ctx,
+		userID,
+		name,
+		email,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+func (s *AuthService) ChangePassword(
+	ctx context.Context,
+	userID int64,
+	currentPassword string,
+	newPassword string,
+) error {
+
+	if len(newPassword) < 8 {
+		return errors.New("new password must be at least 8 characters")
+	}
+
+	if currentPassword == newPassword {
+		return errors.New("new password must be different")
+	}
+
+	user, passwordHash, err := s.UserRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(passwordHash),
+		[]byte(currentPassword),
+	)
+	if err != nil {
+		return errors.New("current password is incorrect")
+	}
+
+	newPasswordHash, err := bcrypt.GenerateFromPassword(
+		[]byte(newPassword),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		return err
+	}
+
+	return s.UserRepo.UpdatePassword(
+		ctx,
+		user.ID,
+		string(newPasswordHash),
+	)
+}
