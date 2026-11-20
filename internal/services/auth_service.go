@@ -12,7 +12,10 @@ import (
 	"iam-service/internal/utils"
 )
 
-var ErrEmailAlreadyExists = errors.New("email already registered")
+var (
+	ErrEmailAlreadyExists = errors.New("email already registered")
+	ErrAccountLocked      = errors.New("account temporarily locked")
+)
 
 type UserRepository interface {
 	Create(ctx context.Context, name, email, passwordHash string) (*models.User, error)
@@ -21,6 +24,8 @@ type UserRepository interface {
 	UpdateProfile(ctx context.Context, userID int64, name, email string) (*models.User, error)
 	FindByUserID(ctx context.Context, userID int64) (*models.User, string, error)
 	UpdatePasswordAndRevokeTokens(ctx context.Context, userID int64, passwordHash string) error
+	RecordFailedLogin(ctx context.Context, userID int64) error
+	ResetFailedLogin(ctx context.Context, userID int64) error
 }
 
 type RefreshTokenRepository interface {
@@ -101,12 +106,29 @@ func (s *AuthService) Login(
 		return nil, nil, errors.New("invalid email or password")
 	}
 
+	// Check whether the account is currently locked.
+	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+		return nil, nil, ErrAccountLocked
+	}
+
+	// Verify the submitted password.
 	err = bcrypt.CompareHashAndPassword(
 		[]byte(passwordHash),
 		[]byte(password),
 	)
+
 	if err != nil {
+		// Record the incorrect password attempt.
+		if recordErr := s.UserRepo.RecordFailedLogin(ctx, user.ID); recordErr != nil {
+			return nil, nil, recordErr
+		}
+
 		return nil, nil, errors.New("invalid email or password")
+	}
+
+	// Reset failed attempts after successful password verification.
+	if err := s.UserRepo.ResetFailedLogin(ctx, user.ID); err != nil {
+		return nil, nil, err
 	}
 
 	// Generate access and refresh tokens with the user's role.

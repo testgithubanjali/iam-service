@@ -2,11 +2,11 @@ package services
 
 import (
 	"context"
+	"errors"
+	"golang.org/x/crypto/bcrypt"
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/bcrypt"
 
 	"iam-service/internal/models"
 	"iam-service/internal/utils"
@@ -14,12 +14,15 @@ import (
 
 // Mock User Repository
 type MockUserRepository struct {
-	User            *models.User
-	PasswordHash    string
-	CreatedName     string
-	CreatedEmail    string
-	CreateError     error
-	PasswordUpdated bool
+	User                *models.User
+	PasswordHash        string
+	CreatedName         string
+	CreatedEmail        string
+	CreateError         error
+	PasswordUpdated     bool
+	FailedLoginAttempts int
+	FailedLoginError    error
+	ResetLoginError     error
 }
 
 func (m *MockUserRepository) Create(
@@ -469,5 +472,155 @@ func TestChangePasswordWeakPassword(t *testing.T) {
 
 	if userRepo.PasswordUpdated {
 		t.Error("Password should not be updated")
+	}
+}
+
+func (m *MockUserRepository) RecordFailedLogin(
+	ctx context.Context,
+	userID int64,
+) error {
+
+	if m.FailedLoginError != nil {
+		return m.FailedLoginError
+	}
+
+	m.FailedLoginAttempts++
+
+	if m.User != nil {
+		m.User.FailedLoginAttempts = m.FailedLoginAttempts
+
+		if m.FailedLoginAttempts >= 5 {
+			lockedUntil := time.Now().Add(15 * time.Minute)
+			m.User.LockedUntil = &lockedUntil
+		}
+	}
+
+	return nil
+}
+
+func (m *MockUserRepository) ResetFailedLogin(
+	ctx context.Context,
+	userID int64,
+) error {
+
+	if m.ResetLoginError != nil {
+		return m.ResetLoginError
+	}
+
+	m.FailedLoginAttempts = 0
+
+	if m.User != nil {
+		m.User.FailedLoginAttempts = 0
+		m.User.LockedUntil = nil
+	}
+
+	return nil
+}
+
+func TestLoginLocksAccountAfterFiveFailedAttempts(t *testing.T) {
+	t.Setenv("JWT_SECRET", strings.Repeat("a", 32))
+
+	passwordHash, err := bcrypt.GenerateFromPassword(
+		[]byte("Password123"),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	userRepo := &MockUserRepository{
+		User: &models.User{
+			ID:   1,
+			Role: "user",
+		},
+		PasswordHash: string(passwordHash),
+	}
+
+	tokenRepo := &MockRefreshTokenRepository{}
+	service := NewAuthService(userRepo, tokenRepo)
+
+	// Make five incorrect login attempts.
+	for i := 1; i <= 5; i++ {
+		_, _, err := service.Login(
+			context.Background(),
+			"anjali@example.com",
+			"WrongPassword",
+		)
+
+		if err == nil {
+			t.Fatalf("Expected failure on attempt %d", i)
+		}
+	}
+
+	if userRepo.FailedLoginAttempts != 5 {
+		t.Fatalf(
+			"Expected 5 failed attempts, got %d",
+			userRepo.FailedLoginAttempts,
+		)
+	}
+
+	if userRepo.User.LockedUntil == nil {
+		t.Fatal("Expected account to be locked")
+	}
+
+	// Even the correct password must be rejected during the lock.
+	_, tokens, err := service.Login(
+		context.Background(),
+		"anjali@example.com",
+		"Password123",
+	)
+
+	if !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("Expected ErrAccountLocked, got %v", err)
+	}
+
+	if tokens != nil {
+		t.Fatal("Expected no tokens for locked account")
+	}
+}
+
+func TestSuccessfulLoginResetsFailedAttempts(t *testing.T) {
+	t.Setenv("JWT_SECRET", strings.Repeat("a", 32))
+
+	passwordHash, err := bcrypt.GenerateFromPassword(
+		[]byte("Password123"),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	userRepo := &MockUserRepository{
+		User: &models.User{
+			ID:                  1,
+			Role:                "user",
+			FailedLoginAttempts: 3,
+		},
+		PasswordHash:        string(passwordHash),
+		FailedLoginAttempts: 3,
+	}
+
+	tokenRepo := &MockRefreshTokenRepository{}
+	service := NewAuthService(userRepo, tokenRepo)
+
+	_, tokens, err := service.Login(
+		context.Background(),
+		"anjali@example.com",
+		"Password123",
+	)
+
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	if tokens == nil {
+		t.Fatal("Expected tokens after successful login")
+	}
+
+	if userRepo.FailedLoginAttempts != 0 {
+		t.Errorf(
+			"Expected failed attempts to reset to 0, got %d",
+			userRepo.FailedLoginAttempts,
+		)
 	}
 }

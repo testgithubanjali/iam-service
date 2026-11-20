@@ -99,6 +99,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	)
 
 	if err != nil {
+		// Handle account lockout.
+		if errors.Is(err, services.ErrAccountLocked) {
+			c.JSON(http.StatusLocked, gin.H{
+				"error": "Your account is temporarily locked. Please try again after 15 minutes.",
+			})
+			return
+		}
+
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Invalid email or password",
 		})

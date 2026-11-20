@@ -61,13 +61,15 @@ func (r *UserRepository) FindByEmail(
 ) (*models.User, string, error) {
 
 	query := `
-		SELECT id, name, email, password_hash, role, created_at
+		SELECT id, name, email, password_hash, role, created_at,
+		       failed_login_attempts, locked_until
 		FROM users
 		WHERE email = $1
 	`
 
 	user := &models.User{}
 	var passwordHash string
+	var lockedUntil sql.NullTime
 
 	err := r.DB.QueryRowContext(ctx, query, email).Scan(
 		&user.ID,
@@ -76,10 +78,16 @@ func (r *UserRepository) FindByEmail(
 		&passwordHash,
 		&user.Role,
 		&user.CreatedAt,
+		&user.FailedLoginAttempts,
+		&lockedUntil,
 	)
 
 	if err != nil {
 		return nil, "", err
+	}
+
+	if lockedUntil.Valid {
+		user.LockedUntil = &lockedUntil.Time
 	}
 
 	return user, passwordHash, nil
@@ -324,6 +332,7 @@ func (r *UserRepository) GetAllUsers(
 
 	return users, nil
 }
+
 func (r *UserRepository) UpdateUserRole(
 	ctx context.Context,
 	userID int64,
@@ -331,12 +340,12 @@ func (r *UserRepository) UpdateUserRole(
 ) (*models.User, error) {
 
 	query := `
-        UPDATE users
-        SET role = $1,
-            updated_at = NOW()
-        WHERE id = $2
-        RETURNING id, name, email, role, created_at
-    `
+		UPDATE users
+		SET role = $1,
+		    updated_at = NOW()
+		WHERE id = $2
+		RETURNING id, name, email, role, created_at
+	`
 
 	var user models.User
 
@@ -363,15 +372,16 @@ func (r *UserRepository) UpdateUserRole(
 
 	return &user, nil
 }
+
 func (r *UserRepository) DeleteUser(
 	ctx context.Context,
 	userID int64,
 ) error {
 
 	query := `
-        DELETE FROM users
-        WHERE id = $1
-    `
+		DELETE FROM users
+		WHERE id = $1
+	`
 
 	result, err := r.DB.ExecContext(ctx, query, userID)
 	if err != nil {
@@ -389,7 +399,11 @@ func (r *UserRepository) DeleteUser(
 
 	return nil
 }
-func (r *UserRepository) CountAdmins(ctx context.Context) (int, error) {
+
+func (r *UserRepository) CountAdmins(
+	ctx context.Context,
+) (int, error) {
+
 	var count int
 
 	query := `SELECT COUNT(*) FROM users WHERE role = 'admin'`
@@ -400,4 +414,62 @@ func (r *UserRepository) CountAdmins(ctx context.Context) (int, error) {
 	}
 
 	return count, nil
+}
+
+// RecordFailedLogin records an incorrect password attempt.
+// The account is locked for 15 minutes after five failed attempts.
+func (r *UserRepository) RecordFailedLogin(
+	ctx context.Context,
+	userID int64,
+) error {
+
+	query := `
+    UPDATE users
+    SET
+        failed_login_attempts = CASE
+            WHEN locked_until IS NOT NULL AND locked_until <= NOW()
+                THEN 1
+            WHEN locked_until > NOW()
+                THEN failed_login_attempts
+            ELSE failed_login_attempts + 1
+        END,
+        locked_until = CASE
+            WHEN locked_until > NOW()
+                THEN locked_until
+            WHEN locked_until IS NOT NULL AND locked_until <= NOW()
+                THEN NULL
+            WHEN failed_login_attempts + 1 >= 5
+                THEN NOW() + INTERVAL '15 minutes'
+            ELSE NULL
+        END
+    WHERE id = $1
+`
+
+	_, err := r.DB.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to record login attempt: %w", err)
+	}
+
+	return nil
+}
+
+// ResetFailedLogin resets the failed attempts after successful login.
+func (r *UserRepository) ResetFailedLogin(
+	ctx context.Context,
+	userID int64,
+) error {
+
+	query := `
+		UPDATE users
+		SET failed_login_attempts = 0,
+		    locked_until = NULL
+		WHERE id = $1
+	`
+
+	_, err := r.DB.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to reset login attempts: %w", err)
+	}
+
+	return nil
 }
