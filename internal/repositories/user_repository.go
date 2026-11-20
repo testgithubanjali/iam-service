@@ -363,3 +363,29 @@ func (r *UserRepository) UpdateUserRole(
 
 	return &user, nil
 }
+func (r *UserRepository) DeleteUser(
+	ctx context.Context,
+	userID int64,
+) error {
+
+	query := `
+        DELETE FROM users
+        WHERE id = $1
+    `
+
+	result, err := r.DB.ExecContext(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
