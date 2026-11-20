@@ -1,3 +1,4 @@
+
 package utils
 
 import (
@@ -13,6 +14,7 @@ import (
 
 type TokenClaims struct {
 	UserID    int64  `json:"user_id"`
+	Role      string `json:"role"`
 	TokenType string `json:"token_type"`
 	jwt.RegisteredClaims
 }
@@ -22,19 +24,23 @@ type TokenPair struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func GenerateTokenPair(userID int64) (*TokenPair, error) {
+func GenerateTokenPair(userID int64, role string) (*TokenPair, error) {
 	secret := os.Getenv("JWT_SECRET")
 
 	if len(secret) < 32 {
 		return nil, errors.New("JWT_SECRET must contain at least 32 characters")
 	}
 
-	accessToken, err := generateToken(userID, "access", 15*time.Minute, secret)
+	if role != "user" && role != "admin" {
+		return nil, errors.New("invalid user role")
+	}
+
+	accessToken, err := generateToken(userID, role, "access", 15*time.Minute, secret)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := generateToken(userID, "refresh", 7*24*time.Hour, secret)
+	refreshToken, err := generateToken(userID, role, "refresh", 7*24*time.Hour, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +53,7 @@ func GenerateTokenPair(userID int64) (*TokenPair, error) {
 
 func generateToken(
 	userID int64,
+	role string,
 	tokenType string,
 	duration time.Duration,
 	secret string,
@@ -54,7 +61,6 @@ func generateToken(
 
 	now := time.Now()
 
-	// Generate a unique ID for every JWT
 	jtiBytes := make([]byte, 16)
 
 	_, err := rand.Read(jtiBytes)
@@ -66,6 +72,7 @@ func generateToken(
 
 	claims := TokenClaims{
 		UserID:    userID,
+		Role:      role,
 		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
@@ -114,6 +121,10 @@ func ValidateRefreshToken(refreshToken string) (int64, error) {
 
 	if claims.UserID <= 0 {
 		return 0, errors.New("invalid user ID")
+	}
+
+	if claims.Role != "user" && claims.Role != "admin" {
+		return 0, errors.New("invalid user role")
 	}
 
 	return claims.UserID, nil

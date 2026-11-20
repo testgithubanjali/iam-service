@@ -27,10 +27,10 @@ func (r *UserRepository) Create(
 ) (*models.User, error) {
 
 	query := `
-                INSERT INTO users (name, email, password_hash)
-                VALUES ($1, $2, $3)
-                RETURNING id, name, email, created_at
-        `
+		INSERT INTO users (name, email, password_hash)
+		VALUES ($1, $2, $3)
+		RETURNING id, name, email, role, created_at
+	`
 
 	user := &models.User{}
 
@@ -44,6 +44,7 @@ func (r *UserRepository) Create(
 		&user.ID,
 		&user.Name,
 		&user.Email,
+		&user.Role,
 		&user.CreatedAt,
 	)
 
@@ -60,10 +61,10 @@ func (r *UserRepository) FindByEmail(
 ) (*models.User, string, error) {
 
 	query := `
-        SELECT id, name, email, password_hash, created_at
-        FROM users
-        WHERE email = $1
-    `
+		SELECT id, name, email, password_hash, role, created_at
+		FROM users
+		WHERE email = $1
+	`
 
 	user := &models.User{}
 	var passwordHash string
@@ -73,6 +74,7 @@ func (r *UserRepository) FindByEmail(
 		&user.Name,
 		&user.Email,
 		&passwordHash,
+		&user.Role,
 		&user.CreatedAt,
 	)
 
@@ -89,7 +91,7 @@ func (r *UserRepository) GetByID(
 ) (*models.User, error) {
 
 	query := `
-		SELECT id, name, email, created_at
+		SELECT id, name, email, role, created_at
 		FROM users
 		WHERE id = $1
 	`
@@ -100,6 +102,7 @@ func (r *UserRepository) GetByID(
 		&user.ID,
 		&user.Name,
 		&user.Email,
+		&user.Role,
 		&user.CreatedAt,
 	)
 
@@ -109,6 +112,7 @@ func (r *UserRepository) GetByID(
 
 	return user, nil
 }
+
 func (r *UserRepository) UpdateProfile(
 	ctx context.Context,
 	userID int64,
@@ -117,13 +121,13 @@ func (r *UserRepository) UpdateProfile(
 ) (*models.User, error) {
 
 	query := `
-        UPDATE users
-        SET name = $1,
-            email = $2,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $3
-        RETURNING id, name, email, created_at
-    `
+		UPDATE users
+		SET name = $1,
+		    email = $2,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $3
+		RETURNING id, name, email, role, created_at
+	`
 
 	var user models.User
 
@@ -137,6 +141,7 @@ func (r *UserRepository) UpdateProfile(
 		&user.ID,
 		&user.Name,
 		&user.Email,
+		&user.Role,
 		&user.CreatedAt,
 	)
 
@@ -146,6 +151,7 @@ func (r *UserRepository) UpdateProfile(
 
 	return &user, nil
 }
+
 func (r *UserRepository) UpdatePassword(
 	ctx context.Context,
 	userID int64,
@@ -153,11 +159,11 @@ func (r *UserRepository) UpdatePassword(
 ) error {
 
 	query := `
-        UPDATE users
-        SET password_hash = $1,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-    `
+		UPDATE users
+		SET password_hash = $1,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`
 
 	result, err := r.DB.ExecContext(
 		ctx,
@@ -180,16 +186,17 @@ func (r *UserRepository) UpdatePassword(
 
 	return nil
 }
+
 func (r *UserRepository) FindByUserID(
 	ctx context.Context,
 	userID int64,
 ) (*models.User, string, error) {
 
 	query := `
-        SELECT id, name, email, password_hash, created_at
-        FROM users
-        WHERE id = $1
-    `
+		SELECT id, name, email, password_hash, role, created_at
+		FROM users
+		WHERE id = $1
+	`
 
 	var user models.User
 	var passwordHash string
@@ -203,6 +210,7 @@ func (r *UserRepository) FindByUserID(
 		&user.Name,
 		&user.Email,
 		&passwordHash,
+		&user.Role,
 		&user.CreatedAt,
 	)
 
@@ -212,13 +220,13 @@ func (r *UserRepository) FindByUserID(
 
 	return &user, passwordHash, nil
 }
+
 func (r *UserRepository) UpdatePasswordAndRevokeTokens(
 	ctx context.Context,
 	userID int64,
 	passwordHash string,
 ) error {
 
-	// 1. Start database transaction
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -226,13 +234,12 @@ func (r *UserRepository) UpdatePasswordAndRevokeTokens(
 
 	defer tx.Rollback()
 
-	// 2. Update user password
 	updatePasswordQuery := `
-        UPDATE users
-        SET password_hash = $1,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-    `
+		UPDATE users
+		SET password_hash = $1,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+	`
 
 	result, err := tx.ExecContext(
 		ctx,
@@ -253,13 +260,12 @@ func (r *UserRepository) UpdatePasswordAndRevokeTokens(
 		return errors.New("user not found")
 	}
 
-	// 3. Revoke all active refresh tokens
 	revokeTokensQuery := `
-        UPDATE refresh_tokens
-        SET revoked_at = CURRENT_TIMESTAMP
-        WHERE user_id = $1
-          AND revoked_at IS NULL
-    `
+		UPDATE refresh_tokens
+		SET revoked_at = CURRENT_TIMESTAMP
+		WHERE user_id = $1
+		  AND revoked_at IS NULL
+	`
 
 	_, err = tx.ExecContext(
 		ctx,
@@ -270,7 +276,6 @@ func (r *UserRepository) UpdatePasswordAndRevokeTokens(
 		return err
 	}
 
-	// 4. Commit transaction
 	if err := tx.Commit(); err != nil {
 		return err
 	}
