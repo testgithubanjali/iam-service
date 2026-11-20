@@ -11,6 +11,7 @@ import (
 
 type TokenClaims struct {
 	UserID    int64  `json:"user_id"`
+	Role      string `json:"role"`
 	TokenType string `json:"token_type"`
 	jwt.RegisteredClaims
 }
@@ -97,10 +98,56 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 6. Store user ID in Gin context
-		c.Set("userID", claims.UserID)
+		// 6. Validate user ID and role
+		if claims.UserID <= 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid user ID",
+			})
+			c.Abort()
+			return
+		}
 
-		// 7. Continue to protected route
+		if claims.Role != "user" && claims.Role != "admin" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid user role",
+			})
+			c.Abort()
+			return
+		}
+
+		// 7. Store user ID and role in Gin context
+		c.Set("userID", claims.UserID)
+		c.Set("userRole", claims.Role)
+
+		// 8. Continue to protected route
+		c.Next()
+	}
+}
+
+// AdminOnly allows access only to administrators.
+func AdminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		// Get role from authenticated user's context
+		roleValue, exists := c.Get("userRole")
+
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Authentication required",
+			})
+			c.Abort()
+			return
+		}
+
+		role, ok := roleValue.(string)
+		if !ok || role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Admin access required",
+			})
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }

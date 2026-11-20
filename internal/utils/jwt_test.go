@@ -7,7 +7,7 @@ import (
 func TestGenerateTokenPair(t *testing.T) {
 	t.Setenv("JWT_SECRET", "this-is-a-test-secret-key-at-least-32-characters")
 
-	tokens, err := GenerateTokenPair(1)
+	tokens, err := GenerateTokenPair(1, "user")
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -29,7 +29,7 @@ func TestGenerateTokenPair(t *testing.T) {
 func TestValidateRefreshToken(t *testing.T) {
 	t.Setenv("JWT_SECRET", "this-is-a-test-secret-key-at-least-32-characters")
 
-	tokens, err := GenerateTokenPair(1)
+	tokens, err := GenerateTokenPair(1, "user")
 	if err != nil {
 		t.Fatalf("Token generation failed: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestValidateRefreshToken(t *testing.T) {
 func TestValidateAccessTokenAsRefreshToken(t *testing.T) {
 	t.Setenv("JWT_SECRET", "this-is-a-test-secret-key-at-least-32-characters")
 
-	tokens, err := GenerateTokenPair(1)
+	tokens, err := GenerateTokenPair(1, "user")
 	if err != nil {
 		t.Fatalf("Token generation failed: %v", err)
 	}

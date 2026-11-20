@@ -14,13 +14,14 @@ import (
 
 // Mock User Repository
 type MockUserRepository struct {
-    User         *models.User
-    PasswordHash string
-    CreatedName  string
-    CreatedEmail string
-    CreateError  error
-    PasswordUpdated bool
+	User            *models.User
+	PasswordHash    string
+	CreatedName     string
+	CreatedEmail    string
+	CreateError     error
+	PasswordUpdated bool
 }
+
 func (m *MockUserRepository) Create(
 	ctx context.Context,
 	name, email, passwordHash string,
@@ -64,14 +65,15 @@ func (m *MockUserRepository) FindByUserID(
 ) (*models.User, string, error) {
 	return m.User, m.PasswordHash, nil
 }
+
 func (m *MockUserRepository) UpdatePasswordAndRevokeTokens(
-    ctx context.Context,
-    userID int64,
-    passwordHash string,
+	ctx context.Context,
+	userID int64,
+	passwordHash string,
 ) error {
-    m.PasswordHash = passwordHash
-    m.PasswordUpdated = true
-    return nil
+	m.PasswordHash = passwordHash
+	m.PasswordUpdated = true
+	return nil
 }
 
 // Mock Refresh Token Repository
@@ -121,7 +123,10 @@ func (m *MockRefreshTokenRepository) RotateRefreshToken(
 
 // Test Register
 func TestRegister(t *testing.T) {
-	user := &models.User{ID: 1}
+	user := &models.User{
+		ID:   1,
+		Role: "user",
+	}
 
 	userRepo := &MockUserRepository{
 		User: user,
@@ -196,7 +201,10 @@ func TestLogin(t *testing.T) {
 	}
 
 	userRepo := &MockUserRepository{
-		User:         &models.User{ID: 1},
+		User: &models.User{
+			ID:   1,
+			Role: "user",
+		},
 		PasswordHash: string(passwordHash),
 	}
 
@@ -242,7 +250,10 @@ func TestLoginWrongPassword(t *testing.T) {
 	}
 
 	userRepo := &MockUserRepository{
-		User:         &models.User{ID: 1},
+		User: &models.User{
+			ID:   1,
+			Role: "user",
+		},
 		PasswordHash: string(passwordHash),
 	}
 
@@ -273,13 +284,16 @@ func TestLoginWrongPassword(t *testing.T) {
 func TestRefreshTokenRotation(t *testing.T) {
 	t.Setenv("JWT_SECRET", strings.Repeat("a", 32))
 
-	oldTokens, err := utils.GenerateTokenPair(1)
+	oldTokens, err := utils.GenerateTokenPair(1, "user")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	userRepo := &MockUserRepository{
-		User: &models.User{ID: 1},
+		User: &models.User{
+			ID:   1,
+			Role: "user",
+		},
 	}
 
 	tokenRepo := &MockRefreshTokenRepository{
@@ -318,7 +332,7 @@ func TestRefreshTokenRotation(t *testing.T) {
 func TestLogout(t *testing.T) {
 	t.Setenv("JWT_SECRET", strings.Repeat("a", 32))
 
-	tokens, err := utils.GenerateTokenPair(1)
+	tokens, err := utils.GenerateTokenPair(1, "user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +367,10 @@ func TestChangePassword(t *testing.T) {
 	}
 
 	userRepo := &MockUserRepository{
-		User:         &models.User{ID: 1},
+		User: &models.User{
+			ID:   1,
+			Role: "user",
+		},
 		PasswordHash: string(passwordHash),
 	}
 
@@ -397,7 +414,10 @@ func TestChangePasswordWrongCurrentPassword(t *testing.T) {
 	}
 
 	userRepo := &MockUserRepository{
-		User:         &models.User{ID: 1},
+		User: &models.User{
+			ID:   1,
+			Role: "user",
+		},
 		PasswordHash: string(passwordHash),
 	}
 
@@ -425,7 +445,10 @@ func TestChangePasswordWrongCurrentPassword(t *testing.T) {
 // Test Change Password with weak password
 func TestChangePasswordWeakPassword(t *testing.T) {
 	userRepo := &MockUserRepository{
-		User: &models.User{ID: 1},
+		User: &models.User{
+			ID:   1,
+			Role: "user",
+		},
 	}
 
 	service := NewAuthService(

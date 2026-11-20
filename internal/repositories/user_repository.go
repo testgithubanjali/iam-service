@@ -282,3 +282,45 @@ func (r *UserRepository) UpdatePasswordAndRevokeTokens(
 
 	return nil
 }
+
+func (r *UserRepository) GetAllUsers(
+	ctx context.Context,
+) ([]models.User, error) {
+
+	query := `
+		SELECT id, name, email, role, created_at
+		FROM users
+		ORDER BY id ASC
+	`
+
+	rows, err := r.DB.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []models.User
+
+	for rows.Next() {
+		var user models.User
+
+		err := rows.Scan(
+			&user.ID,
+			&user.Name,
+			&user.Email,
+			&user.Role,
+			&user.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate users: %w", err)
+	}
+
+	return users, nil
+}
