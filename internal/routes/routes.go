@@ -4,13 +4,15 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-
 	"iam-service/internal/handlers"
+	adminhandler "iam-service/internal/handlers/admin"
 	"iam-service/internal/middleware"
 )
 
-func SetupRouter(authHandler *handlers.AuthHandler) *gin.Engine {
-
+func SetupRouter(
+	authHandler *handlers.AuthHandler,
+	adminHandler *adminhandler.AdminHandler,
+) *gin.Engine {
 	// Create Gin router
 	router := gin.Default()
 
@@ -84,6 +86,8 @@ func SetupRouter(authHandler *handlers.AuthHandler) *gin.Engine {
 			"role":    "admin",
 		})
 	})
+	admin.GET("/users", adminHandler.GetAllUsers)
+	admin.GET("/users/:id", adminHandler.GetUserByID)
 
 	return router
 }

@@ -5,6 +5,7 @@ import (
 
 	"iam-service/internal/database"
 	"iam-service/internal/handlers"
+	adminhandler "iam-service/internal/handlers/admin"
 	"iam-service/internal/repositories"
 	"iam-service/internal/routes"
 	"iam-service/internal/services"
@@ -30,11 +31,11 @@ func main() {
 	)
 
 	// 4. Initialize handlers
+	// 4. Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
-
+	adminHandler := adminhandler.NewAdminHandler(userRepo)
 	// 5. Initialize routes
-	router := routes.SetupRouter(authHandler)
-
+	router := routes.SetupRouter(authHandler, adminHandler)
 	// 6. Print registered routes
 	for _, route := range router.Routes() {
 		log.Printf("REGISTERED ROUTE: %s %s", route.Method, route.Path)
