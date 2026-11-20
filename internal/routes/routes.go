@@ -88,6 +88,7 @@ func SetupRouter(
 	})
 	admin.GET("/users", adminHandler.GetAllUsers)
 	admin.GET("/users/:id", adminHandler.GetUserByID)
+	admin.PUT("/users/:id/role", adminHandler.UpdateUserRole)
 
 	return router
 }

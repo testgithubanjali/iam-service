@@ -324,3 +324,42 @@ func (r *UserRepository) GetAllUsers(
 
 	return users, nil
 }
+func (r *UserRepository) UpdateUserRole(
+	ctx context.Context,
+	userID int64,
+	role string,
+) (*models.User, error) {
+
+	query := `
+        UPDATE users
+        SET role = $1,
+            updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, name, email, role, created_at
+    `
+
+	var user models.User
+
+	err := r.DB.QueryRowContext(
+		ctx,
+		query,
+		role,
+		userID,
+	).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.Role,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+
+		return nil, fmt.Errorf("failed to update user role: %w", err)
+	}
+
+	return &user, nil
+}
