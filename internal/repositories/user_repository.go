@@ -212,3 +212,68 @@ func (r *UserRepository) FindByUserID(
 
 	return &user, passwordHash, nil
 }
+func (r *UserRepository) UpdatePasswordAndRevokeTokens(
+	ctx context.Context,
+	userID int64,
+	passwordHash string,
+) error {
+
+	// 1. Start database transaction
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	// 2. Update user password
+	updatePasswordQuery := `
+        UPDATE users
+        SET password_hash = $1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+    `
+
+	result, err := tx.ExecContext(
+		ctx,
+		updatePasswordQuery,
+		passwordHash,
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return errors.New("user not found")
+	}
+
+	// 3. Revoke all active refresh tokens
+	revokeTokensQuery := `
+        UPDATE refresh_tokens
+        SET revoked_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+    `
+
+	_, err = tx.ExecContext(
+		ctx,
+		revokeTokensQuery,
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+
+	// 4. Commit transaction
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -126,7 +126,7 @@ func (s *AuthService) Refresh(
 		return nil, nil, err
 	}
 
-	// 2. Check whether the refresh token exists in PostgreSQL
+	// 2. Validate refresh token in PostgreSQL
 	storedUserID, err := s.RefreshTokenRepo.ValidateRefreshToken(
 		ctx,
 		refreshToken,
@@ -135,40 +135,31 @@ func (s *AuthService) Refresh(
 		return nil, nil, err
 	}
 
-	// 3. Ensure the database user ID matches the JWT user ID
 	if storedUserID != userID {
 		return nil, nil, errors.New("invalid refresh token")
 	}
 
-	// 4. Get user details
+	// 3. Get user details
 	user, err := s.UserRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, nil, errors.New("user not found")
 	}
 
-	// 5. Generate a new token pair
+	// 4. Generate new token pair
 	tokens, err := utils.GenerateTokenPair(user.ID)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 6. Save the new refresh token in PostgreSQL
+	// 5. Rotate tokens atomically in PostgreSQL
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
 
-	err = s.RefreshTokenRepo.SaveRefreshToken(
+	err = s.RefreshTokenRepo.RotateRefreshToken(
 		ctx,
 		user.ID,
+		refreshToken,
 		tokens.RefreshToken,
 		expiresAt,
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// 7. Revoke the old refresh token
-	err = s.RefreshTokenRepo.RevokeRefreshToken(
-		ctx,
-		refreshToken,
 	)
 	if err != nil {
 		return nil, nil, err
@@ -218,11 +209,13 @@ func (s *AuthService) ChangePassword(
 		return errors.New("new password must be different")
 	}
 
+	// 1. Find user and retrieve password hash
 	user, passwordHash, err := s.UserRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		return errors.New("user not found")
 	}
 
+	// 2. Verify current password
 	err = bcrypt.CompareHashAndPassword(
 		[]byte(passwordHash),
 		[]byte(currentPassword),
@@ -231,6 +224,7 @@ func (s *AuthService) ChangePassword(
 		return errors.New("current password is incorrect")
 	}
 
+	// 3. Generate new password hash
 	newPasswordHash, err := bcrypt.GenerateFromPassword(
 		[]byte(newPassword),
 		bcrypt.DefaultCost,
@@ -239,9 +233,37 @@ func (s *AuthService) ChangePassword(
 		return err
 	}
 
-	return s.UserRepo.UpdatePassword(
+	// 4. Update password and revoke all refresh tokens atomically
+	err = s.UserRepo.UpdatePasswordAndRevokeTokens(
 		ctx,
 		user.ID,
 		string(newPasswordHash),
 	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+func (s *AuthService) Logout(
+	ctx context.Context,
+	refreshToken string,
+) error {
+
+	// Validate JWT refresh token
+	_, err := utils.ValidateRefreshToken(refreshToken)
+	if err != nil {
+		return err
+	}
+
+	// Revoke token in PostgreSQL
+	err = s.RefreshTokenRepo.RevokeRefreshToken(
+		ctx,
+		refreshToken,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

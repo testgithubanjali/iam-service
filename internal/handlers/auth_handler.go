@@ -291,3 +291,36 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		"message": "Password changed successfully",
 	})
 }
+
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req LogoutRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Refresh token is required",
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(
+		c.Request.Context(),
+		5*time.Second,
+	)
+	defer cancel()
+
+	err := h.AuthService.Logout(ctx, req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Invalid or already revoked refresh token",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Logout successful",
+	})
+}
