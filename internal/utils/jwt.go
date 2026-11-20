@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -52,10 +54,21 @@ func generateToken(
 
 	now := time.Now()
 
+	// Generate a unique ID for every JWT
+	jtiBytes := make([]byte, 16)
+
+	_, err := rand.Read(jtiBytes)
+	if err != nil {
+		return "", err
+	}
+
+	jti := hex.EncodeToString(jtiBytes)
+
 	claims := TokenClaims{
 		UserID:    userID,
 		TokenType: tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti,
 			Issuer:    "iam-service",
 			Subject:   fmt.Sprintf("%d", userID),
 			IssuedAt:  jwt.NewNumericDate(now),

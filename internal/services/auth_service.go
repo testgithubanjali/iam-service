@@ -9,20 +9,35 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"iam-service/internal/models"
-	"iam-service/internal/repositories"
 	"iam-service/internal/utils"
 )
 
 var ErrEmailAlreadyExists = errors.New("email already registered")
 
+type UserRepository interface {
+	Create(ctx context.Context, name, email, passwordHash string) (*models.User, error)
+	FindByEmail(ctx context.Context, email string) (*models.User, string, error)
+	GetByID(ctx context.Context, id int64) (*models.User, error)
+	UpdateProfile(ctx context.Context, userID int64, name, email string) (*models.User, error)
+	FindByUserID(ctx context.Context, userID int64) (*models.User, string, error)
+	UpdatePasswordAndRevokeTokens(ctx context.Context, userID int64, passwordHash string) error
+}
+
+type RefreshTokenRepository interface {
+	SaveRefreshToken(ctx context.Context, userID int64, token string, expiresAt time.Time) error
+	ValidateRefreshToken(ctx context.Context, token string) (int64, error)
+	RevokeRefreshToken(ctx context.Context, token string) error
+	RotateRefreshToken(ctx context.Context, userID int64, oldToken, newToken string, expiresAt time.Time) error
+}
+
 type AuthService struct {
-	UserRepo         *repositories.UserRepository
-	RefreshTokenRepo *repositories.RefreshTokenRepository
+	UserRepo         UserRepository
+	RefreshTokenRepo RefreshTokenRepository
 }
 
 func NewAuthService(
-	userRepo *repositories.UserRepository,
-	refreshTokenRepo *repositories.RefreshTokenRepository,
+	userRepo UserRepository,
+	refreshTokenRepo RefreshTokenRepository,
 ) *AuthService {
 	return &AuthService{
 		UserRepo:         userRepo,
