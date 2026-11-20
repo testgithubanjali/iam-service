@@ -116,3 +116,95 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		"user":    user,
 	})
 }
+func (h *AdminHandler) DeleteUser(c *gin.Context) {
+	// Get target user ID
+	id := c.Param("id")
+
+	targetID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || targetID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid user ID",
+		})
+		return
+	}
+
+	// Get current admin ID
+	currentUserID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Unauthorized",
+		})
+		return
+	}
+
+	adminID, ok := currentUserID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Invalid user identity",
+		})
+		return
+	}
+
+	// Prevent self-deletion
+	if targetID == adminID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "You cannot delete your own account",
+		})
+		return
+	}
+
+	// Check whether target user exists
+	user, err := h.UserRepo.GetByID(
+		c.Request.Context(),
+		targetID,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "User not found",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch user",
+		})
+		return
+	}
+
+	// Prevent deleting the last admin
+	if user.Role == "admin" {
+		count, err := h.UserRepo.CountAdmins(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to count admin users",
+			})
+			return
+		}
+
+		if count <= 1 {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": "Cannot delete the last admin account",
+			})
+			return
+		}
+	}
+
+	// Delete user
+	err = h.UserRepo.DeleteUser(
+		c.Request.Context(),
+		targetID,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to delete user",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "User deleted successfully",
+	})
+}

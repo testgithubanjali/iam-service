@@ -389,3 +389,15 @@ func (r *UserRepository) DeleteUser(
 
 	return nil
 }
+func (r *UserRepository) CountAdmins(ctx context.Context) (int, error) {
+	var count int
+
+	query := `SELECT COUNT(*) FROM users WHERE role = 'admin'`
+
+	err := r.DB.QueryRowContext(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count admins: %w", err)
+	}
+
+	return count, nil
+}
